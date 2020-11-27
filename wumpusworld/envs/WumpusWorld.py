@@ -227,9 +227,6 @@ class Wumpus_World:
 
 
 
-
-
-
         
 
 
