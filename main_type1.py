@@ -184,7 +184,7 @@ def play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step):
     return rewards, mean(losses)
 
 
-def test_model(model, mode='static', display=True):
+def test_model(model):
     i = 0
     test_game = WumpusWorldEnv()
     agent = Agent()
