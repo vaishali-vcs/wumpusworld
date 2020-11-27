@@ -184,6 +184,46 @@ def play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step):
     return rewards, mean(losses)
 
 
+def test_model(model, mode='static', display=True):
+    i = 0
+    test_game = WumpusWorldEnv()
+    agent = Agent()
+    observations =env.reset()
+
+    status = 1
+    while status == 1:  # A
+        state = agent.processPercepts(WORLD_SIZE, observations)
+        action = model.get_action(state, epsilon)
+
+        observations, reward, done = test_game.step(action)
+        state2 = agent.processPercepts(WORLD_SIZE, observations)
+        reward = int(reward)
+
+        if reward != -1:
+            if reward > 0:
+                status = 2
+            else:
+                status = 0
+        i += 1
+        if i > 15:
+            break
+
+    win = True if status == 2 else False
+    return win
+
+
+def test(tnet):
+    max_games = 1000
+    wins = 0
+    for i in range(max_games):
+        win = test_model(tnet)
+        if win:
+            wins += 1
+    win_perc = float(wins) / float(max_games)
+    print("Games played: {0}, # of wins: {1}".format(max_games, wins))
+    print("Win percentage: {}%".format(100.0 * win_perc))
+
+
 if __name__ == '__main__':
     env = WumpusWorldEnv()
     agent = Agent()
@@ -202,7 +242,7 @@ if __name__ == '__main__':
 
     TrainNet = DQN(num_states, num_actions, hidden_units, gamma, max_experiences, min_experiences, batch_size, lr)
     TargetNet = DQN(num_states, num_actions, hidden_units, gamma, max_experiences, min_experiences, batch_size, lr)
-    N = 50000
+    N = 100#10000
     total_rewards = np.empty(N)
     epsilon = 0.99
     decay = 0.9999
@@ -221,3 +261,5 @@ if __name__ == '__main__':
             print("episode:", n, "episode reward:", total_reward, "eps:", epsilon, "avg reward (last 100):", avg_rewards,
                   "episode loss: ", losses)
     print("avg reward for last 100 episodes:", avg_rewards)
+
+    test(TrainNet)
