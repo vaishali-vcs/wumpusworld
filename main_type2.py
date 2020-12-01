@@ -92,8 +92,8 @@ enc_hasarrow = [0, 1]
 
 # Agent class
 class DQNAgent:
-    def __init__(self, name, env, dense_list, util_list):
-        self.env = env
+    def __init__(self, name, action_space, dense_list, util_list):
+        self.action_space = action_space
         self.dense_list = dense_list
         self.name = [str(name) + " | " + "".join(
             str(d) + "D | " for d in dense_list) + "".join(u + " | " for u in util_list)][0]
@@ -132,7 +132,7 @@ class DQNAgent:
         for d in dense_list:
             model.add(Dense(units=d, activation='relu'))
         # The output layer has 5 nodes (one node per action)
-        model.add(Dense(units=len(self.env.action_space), activation='linear', name='output'))
+        model.add(Dense(units=len(self.action_space), activation='linear', name='output'))
 
         model.compile(optimizer=Adam(lr=0.001),
                       loss={'output': 'mse'},
@@ -359,42 +359,42 @@ def search():
 
         # For stats
         ep_rewards = [best_average]
-
+        epochs = 2000
         env = WumpusWorldEnv()
+        agent = DQNAgent(f"M{i}", env.action_space, m["dense_list"], m["util_list"])
+        for epoch in tqdm(range(1, epochs+1)):
+            env = WumpusWorldEnv()
+            MODEL_NAME = agent.name
+            best_weights = [agent.model.get_weights()]
 
-        agent = DQNAgent(f"M{i}", env, m["dense_list"], m["util_list"])
-        MODEL_NAME = agent.name
+            # Iterate over episodes
+            for episode in tqdm(range(1, EPISODES + 1), ascii=True, unit='episodes'):
+                if m["best_only"]: agent.model.set_weights(best_weights[0])
+                # agent.target_model.set_weights(best_weights[0])
 
-        best_weights = [agent.model.get_weights()]
+                score_increased = False
+                # Update tensorboard step every episode
+                agent.tensorboard.step = episode
 
-        # Iterate over episodes
-        for episode in tqdm(range(1, EPISODES + 1), ascii=True, unit='episodes'):
-            if m["best_only"]: agent.model.set_weights(best_weights[0])
-            # agent.target_model.set_weights(best_weights[0])
+                # Restarting episode - reset episode reward and step number
+                episode_reward = 0
+                step = 1
+                action = 0
+                # Reset environment and get initial state
+                percept = env.reset()
+                current_state = agent.processPercepts(WORLD_SIZE, percept)
+                game_over = False
+                done = False
+                losses = list()
+                while not done:
+                    # This part stays mostly the same, the change is to query a model for Q values
+                    if np.random.random() > epsilon:
+                        # Get action from Q table
+                        action = np.argmax(agent.get_qs(current_state))
 
-            score_increased = False
-            # Update tensorboard step every episode
-            agent.tensorboard.step = episode
-
-            # Restarting episode - reset episode reward and step number
-            episode_reward = 0
-            step = 1
-            action = 0
-            # Reset environment and get initial state
-            percept = env.reset()
-            current_state = agent.processPercepts(WORLD_SIZE, percept)
-            game_over = False
-            done = False
-            losses = list()
-            while not done:
-                # This part stays mostly the same, the change is to query a model for Q values
-                if np.random.random() > epsilon:
-                    # Get action from Q table
-                    action = np.argmax(agent.get_qs(current_state))
-
-                else:
-                    # Get random action
-                    action = choice(env.action_space)
+                    else:
+                        # Get random action
+                        action = choice(env.action_space)
 
                 percept, reward, game_over = env.step(action)
                 new_state = agent.processPercepts(WORLD_SIZE, percept)

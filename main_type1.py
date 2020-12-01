@@ -11,6 +11,7 @@ from matplotlib import pyplot as plt
 import tensorflow as tf
 import datetime
 from statistics import mean
+from tqdm import tqdm
 # use tf2
 # https://github.com/VXU1230/Medium-Tutorials/blob/master/dqn/cart_pole.py
 # https://towardsdatascience.com/deep-reinforcement-learning-build-a-deep-q-network-dqn-to-play-cartpole-with-tensorflow-2-and-gym-8e105744b998
@@ -184,11 +185,11 @@ def play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step):
     return rewards, mean(losses)
 
 
-def test_model(model):
+def test_model(model, epsilon):
     i = 0
     test_game = WumpusWorldEnv()
     agent = Agent()
-    observations =env.reset()
+    observations =test_game.reset()
 
     status = 1
     while status == 1:  # A
@@ -196,7 +197,7 @@ def test_model(model):
         action = model.get_action(state, epsilon)
 
         observations, reward, done = test_game.step(action)
-        state2 = agent.processPercepts(WORLD_SIZE, observations)
+
         reward = int(reward)
 
         if reward != -1:
@@ -212,11 +213,11 @@ def test_model(model):
     return win
 
 
-def test(tnet):
+def test(tnet, epsilon):
     max_games = 1000
     wins = 0
     for i in range(max_games):
-        win = test_model(tnet)
+        win = test_model(tnet, epsilon)
         if win:
             wins += 1
     win_perc = float(wins) / float(max_games)
@@ -224,7 +225,7 @@ def test(tnet):
     print("Win percentage: {}%".format(100.0 * win_perc))
 
 
-if __name__ == '__main__':
+def playgame():
     env = WumpusWorldEnv()
     agent = Agent()
     gamma = 0.99
@@ -242,24 +243,33 @@ if __name__ == '__main__':
 
     TrainNet = DQN(num_states, num_actions, hidden_units, gamma, max_experiences, min_experiences, batch_size, lr)
     TargetNet = DQN(num_states, num_actions, hidden_units, gamma, max_experiences, min_experiences, batch_size, lr)
-    N = 100#10000
+    N = 5000
     total_rewards = np.empty(N)
     epsilon = 0.99
     decay = 0.9999
     min_epsilon = 0.1
+    epochs = 2000
 
-    for n in range(N):
-        epsilon = max(min_epsilon, epsilon * decay)
-        total_reward, losses = play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step)
-        total_rewards[n] = total_reward
-        avg_rewards = total_rewards[max(0, n - 100):(n + 1)].mean()
-        with summary_writer.as_default():
-            tf.summary.scalar('episode reward', total_reward, step=n)
-            tf.summary.scalar('running avg reward(100)', avg_rewards, step=n)
-            tf.summary.scalar('average loss)', losses, step=n)
-        if n % 100 == 0:
-            print("episode:", n, "episode reward:", total_reward, "eps:", epsilon, "avg reward (last 100):", avg_rewards,
-                  "episode loss: ", losses)
-    print("avg reward for last 100 episodes:", avg_rewards)
+    for epoch in tqdm(range(1, epochs+1)):
+        env = WumpusWorldEnv()
+        agent = Agent()
 
-    test(TrainNet)
+        for n in tqdm(range(N)):
+            epsilon = max(min_epsilon, epsilon * decay)
+            total_reward, losses = play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step)
+            total_rewards[n] = total_reward
+            avg_rewards = total_rewards[max(0, n - 100):(n + 1)].mean()
+            with summary_writer.as_default():
+                tf.summary.scalar('episode reward', total_reward, step=n)
+                tf.summary.scalar('running avg reward(100)', avg_rewards, step=n)
+                tf.summary.scalar('average loss)', losses, step=n)
+            # if n % 100 == 0:
+        #         print("episode:", n, "episode reward:", total_reward, "eps:", epsilon, "avg reward (last 100):", avg_rewards,
+        #               "episode loss: ", losses)
+        # print("avg reward for last 100 episodes:", avg_rewards)
+
+    test(TrainNet, epsilon)
+
+
+if __name__ == '__main__':
+   playgame()
