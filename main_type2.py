@@ -276,7 +276,7 @@ UPDATE_TARGET_EVERY    = 20      # Terminal states (end of episodes)
 MIN_REWARD             = 1000    # For model save
 SAVE_MODEL_EVERY       = 1000    # Episodes
 SHOW_EVERY             = 20      # Episodes
-EPISODES               = 100  # Number of episodes
+EPISODES               = 2  # Number of episodes
 #  Stats settings
 AGGREGATE_STATS_EVERY = 20  # episodes
 SHOW_PREVIEW          = False
@@ -325,7 +325,7 @@ def action_to_string(action):
 
 
 def search():
-    global MINIBATCH_SIZE, env, agent, agent
+    global MINIBATCH_SIZE, env, agent, agent, res
     for i, m in enumerate(models_arch):
         startTime = time.time()  # Used to count episode training time
         MINIBATCH_SIZE = m["MINIBATCH_SIZE"]
@@ -359,16 +359,18 @@ def search():
 
         # For stats
         ep_rewards = [best_average]
-        epochs = 2000
+        epochs = 200
         env = WumpusWorldEnv()
         agent = DQNAgent(f"M{i}", env.action_space, m["dense_list"], m["util_list"])
-        for epoch in tqdm(range(1, epochs+1)):
+
+        for epoch in range(1, epochs+1):
             env = WumpusWorldEnv()
             MODEL_NAME = agent.name
             best_weights = [agent.model.get_weights()]
 
             # Iterate over episodes
             for episode in tqdm(range(1, EPISODES + 1), ascii=True, unit='episodes'):
+                # print("episode {} / {}".format(episode, EPISODES))
                 if m["best_only"]: agent.model.set_weights(best_weights[0])
                 # agent.target_model.set_weights(best_weights[0])
 
@@ -396,18 +398,18 @@ def search():
                         # Get random action
                         action = choice(env.action_space)
 
-                percept, reward, game_over = env.step(action)
-                new_state = agent.processPercepts(WORLD_SIZE, percept)
-                reward = int(reward)
-                # Transform new continuous state to new discrete state and count reward
-                episode_reward += reward
+                    percept, reward, game_over = env.step(action)
+                    new_state = agent.processPercepts(WORLD_SIZE, percept)
+                    reward = int(reward)
+                    # Transform new continuous state to new discrete state and count reward
+                    episode_reward += reward
 
-                agent.update_replay_memory((current_state, action, reward, new_state, game_over))
-                agent.train(game_over, step)
+                    agent.update_replay_memory((current_state, action, reward, new_state, game_over))
+                    agent.train(game_over, step)
 
-                current_state = new_state
-                step += 1
-                done = game_over
+                    current_state = new_state
+                    step += 1
+                    done = game_over
 
             if ECC_Enabled: eps_no_inc_counter += 1
             # Append episode reward to a list and log stats (every given number of episodes)
@@ -450,47 +452,47 @@ def search():
                 except:
                     pass
 
-            # Decay epsilon
-            if epsilon > MIN_EPSILON:
-                epsilon *= EPSILON_DECAY
-                epsilon = max(MIN_EPSILON, epsilon)
+                # Decay epsilon
+                if epsilon > MIN_EPSILON:
+                    epsilon *= EPSILON_DECAY
+                    epsilon = max(MIN_EPSILON, epsilon)
 
-            # Epsilon Fluctuation:
-            if EF_Enabled:
-                if not episode % FLUCTUATE_EVERY:
-                    epsilon = MAX_EPSILON
+                # Epsilon Fluctuation:
+                if EF_Enabled:
+                    if not episode % FLUCTUATE_EVERY:
+                        epsilon = MAX_EPSILON
 
-        endTime = time.time()
-        total_train_time_sec = round((endTime - startTime))
-        total_train_time_min = round((endTime - startTime) / 60, 2)
-        time_per_episode_sec = round((total_train_time_sec) / EPISODES, 3)
+            endTime = time.time()
+            total_train_time_sec = round((endTime - startTime))
+            total_train_time_min = round((endTime - startTime) / 60, 2)
+            time_per_episode_sec = round((total_train_time_sec) / EPISODES, 3)
 
-        # Get Average reward:
-        average_reward = round(sum(ep_rewards) / len(ep_rewards), 2)
+            # Get Average reward:
+            average_reward = round(sum(ep_rewards) / len(ep_rewards), 2)
 
-        # Update Results DataFrames:
-        res = res.append(
-            {"Model Name": MODEL_NAME,"Dense Layers": m["dense_list"],
-             "Batch Size": m["MINIBATCH_SIZE"], "ECC": m["ECC_Settings"], "EF": m["EF_Settings"],
-             "Best Only": m["best_only"], "Average Reward": average_reward,
-             "Best Average": avg_reward_info[-1][1], "Epsilon 4 Best Average": avg_reward_info[-1][2],
-             "Best Average On": avg_reward_info[-1][0], "Max Reward": max_reward_info[-1][1],
-             "Epsilon 4 Max Reward": max_reward_info[-1][2], "Max Reward On": max_reward_info[-1][0],
-             "Total Training Time (min)": total_train_time_min, "Time Per Episode (sec)": time_per_episode_sec}
-            , ignore_index=True)
-        res = res.sort_values(by='Best Average')
-        avg_df = pd.DataFrame(data=avg_reward_info, columns=["Episode", "Average Reward", "Epsilon"])
-        max_df = pd.DataFrame(data=max_reward_info, columns=["Episode", "Max Reward", "Epsilon"])
+            # Update Results DataFrames:
+            res = res.append(
+                {"Model Name": MODEL_NAME,"Dense Layers": m["dense_list"],
+                 "Batch Size": m["MINIBATCH_SIZE"], "ECC": m["ECC_Settings"], "EF": m["EF_Settings"],
+                 "Best Only": m["best_only"], "Average Reward": average_reward,
+                 "Best Average": avg_reward_info[-1][1], "Epsilon 4 Best Average": avg_reward_info[-1][2],
+                 "Best Average On": avg_reward_info[-1][0], "Max Reward": max_reward_info[-1][1],
+                 "Epsilon 4 Max Reward": max_reward_info[-1][2], "Max Reward On": max_reward_info[-1][0],
+                 "Total Training Time (min)": total_train_time_min, "Time Per Episode (sec)": time_per_episode_sec}
+                , ignore_index=True)
+            res = res.sort_values(by='Best Average')
+            avg_df = pd.DataFrame(data=avg_reward_info, columns=["Episode", "Average Reward", "Epsilon"])
+            max_df = pd.DataFrame(data=max_reward_info, columns=["Episode", "Max Reward", "Epsilon"])
 
-        # Save dataFrames
-        res.to_csv(f"{PATH}results/Results.csv")
-        avg_df.to_csv(f"{PATH}results/{MODEL_NAME}-Results-Avg.csv")
-        max_df.to_csv(f"{PATH}results/{MODEL_NAME}-Results-Max.csv")
-    TendTime = time.time()
-    ######################################################################################
-    print(f"Training took {round((TendTime - TstartTime) / 60)} Minutes ")
-    print(f"Training took {round((TendTime - TstartTime) / 3600)} Hours ")
-    ######################################################################################
+            # Save dataFrames
+            res.to_csv(f"{PATH}results/Results.csv")
+            avg_df.to_csv(f"{PATH}results/{MODEL_NAME}-Results-Avg.csv")
+            max_df.to_csv(f"{PATH}results/{MODEL_NAME}-Results-Max.csv")
+        TendTime = time.time()
+        ######################################################################################
+        print(f"Training took {round((TendTime - TstartTime) / 60)} Minutes ")
+        print(f"Training took {round((TendTime - TstartTime) / 3600)} Hours ")
+        ######################################################################################
 
 
 # Grid Search:
