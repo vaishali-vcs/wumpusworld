@@ -7,7 +7,6 @@ from tensorflow.keras.losses import MSE
 from tensorflow.keras.optimizers import Adam
 from matplotlib import pyplot as plt
 import tensorflow as tf
-import datetime
 from statistics import mean
 # use tf2
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
@@ -20,9 +19,9 @@ sys.path.append(os.getcwd())
 from wumpusworld.envs.WumpusGym import WumpusWorldEnv
 from BeelineAgent import Agent, Action
 # For more repetitive results
-random.seed(1)
-np.random.seed(1)
-tf.random.set_seed(1)
+random.seed(42)
+np.random.seed(42)
+tf.random.set_seed(42)
 PATH = ""
 
 # Create models folder
@@ -31,8 +30,6 @@ if not os.path.isdir(f'{PATH}models'):
 # Create results folder
 if not os.path.isdir(f'{PATH}results'):
     os.makedirs(f'{PATH}results')
-
-TstartTime = time.time()
 
 WORLD_SIZE= 4
 Inputshape = 72
@@ -92,8 +89,8 @@ enc_hasarrow = [0, 1]
 
 # Agent class
 class DQNAgent:
-    def __init__(self, name, action_space, dense_list, util_list):
-        self.action_space = action_space
+    def __init__(self, name, env, dense_list, util_list):
+        self.action_space = env.action_space
         self.dense_list = dense_list
         self.name = [str(name) + " | " + "".join(
             str(d) + "D | " for d in dense_list) + "".join(u + " | " for u in util_list)][0]
@@ -148,7 +145,7 @@ class DQNAgent:
     # Trains main network every step during episode
     def train(self, terminal_state, step):
         # Start training only if certain number of samples is already saved
-        if len(self.replay_memory) < MIN_REPLAY_MEMORY_SIZE:
+        if len(self.replay_memory) < REPLAY_MEMORY_SIZE:
             return
 
         # Get a minibatch of random samples from memory replay table
@@ -270,13 +267,13 @@ def save_model_and_weights(agent, model_name, episode, max_reward, average_rewar
 # ## Constants:
 # RL Constants:
 DISCOUNT               = 0.99
-REPLAY_MEMORY_SIZE     = 3_000   # How many last steps to keep for model training
-MIN_REPLAY_MEMORY_SIZE = 1_000   # Minimum number of steps in a memory to start training
+REPLAY_MEMORY_SIZE     = 1_000   # How many last steps to keep for model training
+# MIN_REPLAY_MEMORY_SIZE = 1_000   # Minimum number of steps in a memory to start training
 UPDATE_TARGET_EVERY    = 20      # Terminal states (end of episodes)
 MIN_REWARD             = 1000    # For model save
 SAVE_MODEL_EVERY       = 1000    # Episodes
 SHOW_EVERY             = 20      # Episodes
-EPISODES               = 2  # Number of episodes
+EPISODES               = 1000  # Number of episodes
 #  Stats settings
 AGGREGATE_STATS_EVERY = 20  # episodes
 SHOW_PREVIEW          = False
@@ -300,8 +297,8 @@ models_arch = [{ "dense_list": [150, 100], "util_list": ["ECC2", "1A-5Ac"],
 # A dataframe used to store grid search results
 res = pd.DataFrame(columns=["Model Name", "Dense Layers", "Batch Size", "ECC", "EF",
                             "Best Only", "Average Reward", "Best Average", "Epsilon 4 Best Average",
-                            "Best Average On", "Max Reward", "Epsilon 4 Max Reward", "Max Reward On",
-                            "Total Training Time (min)", "Time Per Episode (sec)"])
+                            "Best Average On", "Max Reward", "Epsilon 4 Max Reward", "Max Reward On"
+                            ])
 
 
 ######################################################################################
@@ -326,8 +323,10 @@ def action_to_string(action):
 
 def search():
     global MINIBATCH_SIZE, env, agent, agent, res
+    games_won ={}
+
     for i, m in enumerate(models_arch):
-        startTime = time.time()  # Used to count episode training time
+        games_won[i] = 0
         MINIBATCH_SIZE = m["MINIBATCH_SIZE"]
 
         # Exploration settings :
@@ -359,57 +358,59 @@ def search():
 
         # For stats
         ep_rewards = [best_average]
-        epochs = 200
         env = WumpusWorldEnv()
-        agent = DQNAgent(f"M{i}", env.action_space, m["dense_list"], m["util_list"])
+        agent = DQNAgent(f"M{i}", env, m["dense_list"], m["util_list"])
 
-        for epoch in range(1, epochs+1):
-            env = WumpusWorldEnv()
-            MODEL_NAME = agent.name
-            best_weights = [agent.model.get_weights()]
+        MODEL_NAME = agent.name
+        best_weights = [agent.model.get_weights()]
 
-            # Iterate over episodes
-            for episode in tqdm(range(1, EPISODES + 1), ascii=True, unit='episodes'):
-                # print("episode {} / {}".format(episode, EPISODES))
-                if m["best_only"]: agent.model.set_weights(best_weights[0])
-                # agent.target_model.set_weights(best_weights[0])
+        # Iterate over episodes
+        for episode in tqdm(range(1, EPISODES + 1), ascii=True ,unit='episodes'):
+            # print("episode {} / {}".format(episode, EPISODES))
+            if m["best_only"]: agent.model.set_weights(best_weights[0])
+            # agent.target_model.set_weights(best_weights[0])
 
-                score_increased = False
-                # Update tensorboard step every episode
-                agent.tensorboard.step = episode
+            score_increased = False
+            # Update tensorboard step every episode
+            agent.tensorboard.step = episode
 
-                # Restarting episode - reset episode reward and step number
-                episode_reward = 0
-                step = 1
-                action = 0
+            # Restarting episode - reset episode reward and step number
+            episode_reward = 0
+            step = 1
+            action = 0
+
+            game_over = False
+            done = False
+
+            while not done:
                 # Reset environment and get initial state
                 percept = env.reset()
                 current_state = agent.processPercepts(WORLD_SIZE, percept)
-                game_over = False
-                done = False
-                losses = list()
-                while not done:
-                    # This part stays mostly the same, the change is to query a model for Q values
-                    if np.random.random() > epsilon:
-                        # Get action from Q table
-                        action = np.argmax(agent.get_qs(current_state))
 
-                    else:
-                        # Get random action
-                        action = choice(env.action_space)
+                # This part stays mostly the same, the change is to query a model for Q values
+                if np.random.random() > epsilon:
+                    # Get action from Q table
+                    action = np.argmax(agent.get_qs(current_state))
 
-                    percept, reward, game_over = env.step(action)
-                    new_state = agent.processPercepts(WORLD_SIZE, percept)
-                    reward = int(reward)
-                    # Transform new continuous state to new discrete state and count reward
-                    episode_reward += reward
+                else:
+                    # Get random action
+                    action = choice(env.action_space)
 
-                    agent.update_replay_memory((current_state, action, reward, new_state, game_over))
-                    agent.train(game_over, step)
+                percept, reward, game_over = env.step(action)
+                new_state = agent.processPercepts(WORLD_SIZE, percept)
+                reward = int(reward)
+                # Transform new continuous state to new discrete state and count reward
+                episode_reward += reward
 
-                    current_state = new_state
-                    step += 1
-                    done = game_over
+                agent.update_replay_memory((current_state, action, reward, new_state, game_over))
+                agent.train(game_over, step)
+
+                current_state = new_state
+                step += 1
+                done = game_over
+
+            if episode_reward >= 1000:
+                games_won[i]+=1
 
             if ECC_Enabled: eps_no_inc_counter += 1
             # Append episode reward to a list and log stats (every given number of episodes)
@@ -452,51 +453,42 @@ def search():
                 except:
                     pass
 
-                # Decay epsilon
-                if epsilon > MIN_EPSILON:
-                    epsilon *= EPSILON_DECAY
-                    epsilon = max(MIN_EPSILON, epsilon)
+            # Decay epsilon
+            if epsilon > MIN_EPSILON:
+                epsilon *= EPSILON_DECAY
+                epsilon = max(MIN_EPSILON, epsilon)
 
-                # Epsilon Fluctuation:
-                if EF_Enabled:
-                    if not episode % FLUCTUATE_EVERY:
-                        epsilon = MAX_EPSILON
+            # Epsilon Fluctuation:
+            if EF_Enabled:
+                if not episode % FLUCTUATE_EVERY:
+                    epsilon = MAX_EPSILON
 
-            endTime = time.time()
-            total_train_time_sec = round((endTime - startTime))
-            total_train_time_min = round((endTime - startTime) / 60, 2)
-            time_per_episode_sec = round((total_train_time_sec) / EPISODES, 3)
+        # Get Average reward:
+        average_reward = round(sum(ep_rewards) / len(ep_rewards), 2)
 
-            # Get Average reward:
-            average_reward = round(sum(ep_rewards) / len(ep_rewards), 2)
+        # Update Results DataFrames:
+        res = res.append(
+            {"Model Name": MODEL_NAME,"Dense Layers": m["dense_list"],
+             "Batch Size": m["MINIBATCH_SIZE"], "ECC": m["ECC_Settings"], "EF": m["EF_Settings"],
+             "Best Only": m["best_only"], "Average Reward": average_reward,
+             "Best Average": avg_reward_info[-1][1], "Epsilon 4 Best Average": avg_reward_info[-1][2],
+             "Best Average On": avg_reward_info[-1][0], "Max Reward": max_reward_info[-1][1],
+             "Epsilon 4 Max Reward": max_reward_info[-1][2], "Max Reward On": max_reward_info[-1][0]}
+            , ignore_index=True)
+        res = res.sort_values(by='Best Average')
+        avg_df = pd.DataFrame(data=avg_reward_info, columns=["Episode", "Average Reward", "Epsilon"])
+        max_df = pd.DataFrame(data=max_reward_info, columns=["Episode", "Max Reward", "Epsilon"])
 
-            # Update Results DataFrames:
-            res = res.append(
-                {"Model Name": MODEL_NAME,"Dense Layers": m["dense_list"],
-                 "Batch Size": m["MINIBATCH_SIZE"], "ECC": m["ECC_Settings"], "EF": m["EF_Settings"],
-                 "Best Only": m["best_only"], "Average Reward": average_reward,
-                 "Best Average": avg_reward_info[-1][1], "Epsilon 4 Best Average": avg_reward_info[-1][2],
-                 "Best Average On": avg_reward_info[-1][0], "Max Reward": max_reward_info[-1][1],
-                 "Epsilon 4 Max Reward": max_reward_info[-1][2], "Max Reward On": max_reward_info[-1][0],
-                 "Total Training Time (min)": total_train_time_min, "Time Per Episode (sec)": time_per_episode_sec}
-                , ignore_index=True)
-            res = res.sort_values(by='Best Average')
-            avg_df = pd.DataFrame(data=avg_reward_info, columns=["Episode", "Average Reward", "Epsilon"])
-            max_df = pd.DataFrame(data=max_reward_info, columns=["Episode", "Max Reward", "Epsilon"])
+        # Save dataFrames
+        res.to_csv(f"{PATH}results/Results.csv")
+        avg_df.to_csv(f"{PATH}results/{MODEL_NAME}-Results-Avg.csv")
+        max_df.to_csv(f"{PATH}results/{MODEL_NAME}-Results-Max.csv")
 
-            # Save dataFrames
-            res.to_csv(f"{PATH}results/Results.csv")
-            avg_df.to_csv(f"{PATH}results/{MODEL_NAME}-Results-Avg.csv")
-            max_df.to_csv(f"{PATH}results/{MODEL_NAME}-Results-Max.csv")
-        TendTime = time.time()
-        ######################################################################################
-        print(f"Training took {round((TendTime - TstartTime) / 60)} Minutes ")
-        print(f"Training took {round((TendTime - TstartTime) / 3600)} Hours ")
-        ######################################################################################
+    return games_won
 
 
 # Grid Search:
 
 
 if __name__ == '__main__':
-    search()
+    games_won = search()
