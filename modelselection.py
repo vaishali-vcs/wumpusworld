@@ -7,6 +7,7 @@ import datetime
 from statistics import mean
 from tqdm import tqdm
 import pandas as pd
+
 random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
@@ -19,7 +20,7 @@ sys.path.append(os.getcwd())
 from wumpusworld.envs.WumpusGym import WumpusWorldEnv
 from BeelineAgent import Agent, Action
 
-WORLD_SIZE= 4
+WORLD_SIZE = 4
 
 
 class MyModel(tf.keras.Model):
@@ -106,6 +107,7 @@ class DQN:
 
         return loss
 
+
 l1 = 72
 l2 = 150
 l3 = 100
@@ -149,7 +151,7 @@ def play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step):
         # print(state[48:64])
         # print(state[64:])
         action = TrainNet.get_action(state, epsilon)
-        steps+=1
+        steps += 1
         # print(action_to_string(action))
         prev_observations = state
         observations, reward, done = env.step(action)
@@ -158,7 +160,7 @@ def play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step):
 
         rewards += int(reward)
         if done:
-           env.reset()
+            env.reset()
 
         exp = {'s': prev_observations, 'a': action, 'r': int(reward), 's2': state2, 'done': done}
         TrainNet.add_experience(exp)
@@ -180,7 +182,6 @@ def play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step):
 
 
 def playgame():
-
     global res
     sumgameswon = {}
     for i, m in enumerate(models_arch):
@@ -199,7 +200,7 @@ def playgame():
         lr = 1e-2
         current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         model_name = m["modelname"]
-        log_dir = 'logs/dqn/' + model_name + '/' +current_time
+        log_dir = 'logs/dqn/' + model_name + '/' + current_time
         summary_writer = tf.summary.create_file_writer(log_dir)
 
         TrainNet = DQN(num_states, num_actions, hidden_units, gamma, max_experiences, min_experiences, batch_size, lr)
@@ -210,52 +211,60 @@ def playgame():
         decay = 0.9999
         min_epsilon = 0.1
         sumgameswon[i] = 0
-        recordwintime=True
+        recordwintime = True
+        total_time_sec = 0
+        total_time_min = 0
+
         for n in tqdm(range(N)):
-            startTime = time.time() # Used to count episode training time
+            startTime = time.time()  # Used to count episode training time
             epsilon = max(min_epsilon, epsilon * decay)
             total_reward, losses, gameswon, stepstaken = play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step)
-            sumgameswon[i]+= gameswon
+            sumgameswon[i] += gameswon
             total_rewards[n] = total_reward
             avg_rewards = total_rewards[max(0, n - 100):(n + 1)].mean()
             with summary_writer.as_default():
                 tf.summary.scalar('episode reward', total_reward, step=n)
                 tf.summary.scalar('running avg reward(100)', avg_rewards, step=n)
                 tf.summary.scalar('average loss)', losses, step=n)
-                tf.summary.scalar('stepstaken)',stepstaken, step=n)
+                tf.summary.scalar('stepstaken)', stepstaken, step=n)
                 tf.summary.scalar('gameswon)', gameswon, step=n)
-            if n % 100 == 0:
-                    print("episode:", n, "episode reward:", total_reward, "eps:", epsilon, "avg reward (last 100):", avg_rewards,
-                          "episode loss: ", losses)
-                    print("avg reward for last 100 episodes:", avg_rewards)
+
             if gameswon == 1 and recordwintime:
                 recordwintime = False
                 endTime = time.time()
                 total_time_sec = round((endTime - startTime))
                 total_time_min = round((endTime - startTime) / 60, 2)
 
-
         res = res.append(
             {"Model Name": model_name, "Dense Layers": m["dense_list"],
-             "Batch Size": m["MINIBATCH_SIZE"], "Total games won": gameswon,
-             "time for 1st win (min)": total_time_min, "time for 1st win  (sec)": total_time_sec}
+             "Batch Size": m["MINIBATCH_SIZE"], "Total games won": sumgameswon[i],
+             "time for 1st win(min)": total_time_min, "time for 1st win(sec)": total_time_sec}
             , ignore_index=True)
-        res = res.sort_values(by='Best Average')
+
         # print("gameswon= by model = ", sumgameswon[i], model_name)
 
 
-models_arch = [{ "modelname": 'M150_100', "dense_list": [150, 100], "MINIBATCH_SIZE": 64 },
+models_arch = [{"modelname": 'M150_100', "dense_list": [150, 100], "MINIBATCH_SIZE": 32},
+               {"modelname": 'M150_100', "dense_list": [150, 100], "MINIBATCH_SIZE": 64},
+               {"modelname": 'M150_100', "dense_list": [150, 100], "MINIBATCH_SIZE": 128},
 
-               { "modelname": 'M128_100_64', "dense_list": [128, 100, 64], "MINIBATCH_SIZE": 128},
+               {"modelname": 'M150_100', "dense_list": [200, 200], "MINIBATCH_SIZE": 32},
+               {"modelname": 'M150_100', "dense_list": [200, 200], "MINIBATCH_SIZE": 64},
+               {"modelname": 'M150_100', "dense_list": [200, 200], "MINIBATCH_SIZE": 128},
 
-               { "modelname": 'M64_32', "dense_list": [64, 32], "MINIBATCH_SIZE": 32}]
+               {"modelname": 'M128_100_64', "dense_list": [128, 100, 64], "MINIBATCH_SIZE": 32},
+               {"modelname": 'M128_100_64', "dense_list": [128, 100, 64], "MINIBATCH_SIZE": 64},
+               {"modelname": 'M128_100_64', "dense_list": [128, 100, 64], "MINIBATCH_SIZE": 128},
+
+               {"modelname": 'M64_32', "dense_list": [64, 32], "MINIBATCH_SIZE": 32},
+               {"modelname": 'M64_32', "dense_list": [64, 32], "MINIBATCH_SIZE": 64},
+               {"modelname": 'M64_32', "dense_list": [64, 32], "MINIBATCH_SIZE": 128}]
 
 # A dataframe used to store grid search results
 res = pd.DataFrame(columns=["Model Name", "Dense Layers", "Batch Size",
-                            "Total games won", "time for 1st win (min)", "time for 1st win  (sec)"
+                            "Total games won", "time for 1st win(min)", "time for 1st win(sec)"
                             ])
-
 
 if __name__ == '__main__':
     # Grid Search:
-   playgame()
+    playgame()
