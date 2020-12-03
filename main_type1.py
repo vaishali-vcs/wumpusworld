@@ -78,9 +78,38 @@ class DQN:
         for v1, v2 in zip(variables1, variables2):
             v1.assign(v2.numpy())
 
-    def train(self, TargetNet):
-        if len(self.experience['s']) < self.min_experiences:
+    def train(self, TargetNet, isdone):
+        if isdone:
+            pass
+        elif len(self.experience['s']) < self.min_experiences:
             return 0
+
+        # ids = np.random.randint(low=0, high=len(self.experience['s']), size=self.batch_size)
+        ids = range(0, len(self.experience['s']))
+        states = np.asarray([self.experience['s'][i] for i in ids])
+        actions = np.asarray([self.experience['a'][i] for i in ids])
+        rewards = np.asarray([self.experience['r'][i] for i in ids])
+        states_next = np.asarray([self.experience['s2'][i] for i in ids])
+        dones = np.asarray([self.experience['done'][i] for i in ids])
+        value_next = np.max(TargetNet.predict(states_next), axis=-1)
+        actual_values = np.where(dones, rewards, rewards + self.gamma * value_next.squeeze())
+
+        with tf.GradientTape() as tape:
+            selected_action_values = tf.math.reduce_sum(
+                self.predict(states) * tf.one_hot(actions, self.num_actions), axis=-1)
+            loss = tf.math.reduce_mean(tf.square(actual_values - selected_action_values))
+        variables = self.model.trainable_variables
+        gradients = tape.gradient(loss, variables)
+        self.optimizer.apply_gradients(zip(gradients, variables))
+        # if isinstance(loss, int):
+        #     print(loss)
+        # else:
+        #     print(loss.numpy())
+
+        return loss
+
+    def train_onend(self, TargetNet):
+
         ids = np.random.randint(low=0, high=len(self.experience['s']), size=self.batch_size)
         states = np.asarray([self.experience['s'][i] for i in ids])
         actions = np.asarray([self.experience['a'][i] for i in ids])
@@ -98,7 +127,6 @@ class DQN:
         gradients = tape.gradient(loss, variables)
         self.optimizer.apply_gradients(zip(gradients, variables))
         return loss
-
 
 l1 = 72
 l2 = 150
@@ -160,29 +188,44 @@ def play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step):
     done = False
     observations = env.reset()
     losses = list()
+    gameswon = 0
+    steps = 0
     while not done:
         state = agent.processPercepts(WORLD_SIZE, observations)
+        # print(state[0:16])
+        # print(state[16:32])
+        # print(state[32:48])
+        # print(state[48:64])
+        # print(state[64:])
         action = TrainNet.get_action(state, epsilon)
+        steps+=1
+        # print(action_to_string(action))
         prev_observations = state
         observations, reward, done = env.step(action)
+
         state2 = agent.processPercepts(WORLD_SIZE, observations)
 
         rewards += int(reward)
         if done:
-            reward = -200
-            env.reset()
+           env.reset()
 
         exp = {'s': prev_observations, 'a': action, 'r': int(reward), 's2': state2, 'done': done}
         TrainNet.add_experience(exp)
-        loss = TrainNet.train(TargetNet)
-        if isinstance(loss, int):
-            losses.append(loss)
-        else:
-            losses.append(loss.numpy())
-        iter += 1
-        if iter % copy_step == 0:
-            TargetNet.copy_weights(TrainNet)
-    return rewards, mean(losses)
+
+    loss = TrainNet.train(TargetNet, done)
+    if isinstance(loss, int):
+        losses.append(loss)
+    else:
+        losses.append(loss.numpy())
+    iter += 1
+    if iter % copy_step == 0:
+        TargetNet.copy_weights(TrainNet)
+
+    if int(reward) > 0:
+        gameswon += 1
+
+    print("steps=", steps)
+    return rewards, mean(losses), gameswon
 
 
 def test_model(model, epsilon):
@@ -227,14 +270,15 @@ def test(tnet, epsilon):
 
 def playgame():
     env = WumpusWorldEnv()
+    env.render()
     agent = Agent()
     gamma = 0.99
     copy_step = 25
     num_states = l1
     num_actions = len(env.action_space)
     hidden_units = [200, 200]
-    max_experiences = 10000
-    min_experiences = 100
+    max_experiences = 32
+    min_experiences = 32
     batch_size = 32
     lr = 1e-2
     current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -248,27 +292,25 @@ def playgame():
     epsilon = 0.99
     decay = 0.9999
     min_epsilon = 0.1
-    epochs = 2000
+    sumgameswon = 0
+    for n in tqdm(range(N)):
+        epsilon = max(min_epsilon, epsilon * decay)
+        total_reward, losses, gameswon = play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step)
+        sumgameswon+= gameswon
+        total_rewards[n] = total_reward
+        avg_rewards = total_rewards[max(0, n - 100):(n + 1)].mean()
+        with summary_writer.as_default():
+            tf.summary.scalar('episode reward', total_reward, step=n)
+            tf.summary.scalar('running avg reward(100)', avg_rewards, step=n)
+            tf.summary.scalar('average loss)', losses, step=n)
+        if n % 100 == 0:
+                print("episode:", n, "episode reward:", total_reward, "eps:", epsilon, "avg reward (last 100):", avg_rewards,
+                      "episode loss: ", losses)
+        print("avg reward for last 100 episodes:", avg_rewards)
 
-    for epoch in tqdm(range(1, epochs+1)):
-        env = WumpusWorldEnv()
-        agent = Agent()
+        print("gameswon=", sumgameswon)
 
-        for n in tqdm(range(N)):
-            epsilon = max(min_epsilon, epsilon * decay)
-            total_reward, losses = play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step)
-            total_rewards[n] = total_reward
-            avg_rewards = total_rewards[max(0, n - 100):(n + 1)].mean()
-            with summary_writer.as_default():
-                tf.summary.scalar('episode reward', total_reward, step=n)
-                tf.summary.scalar('running avg reward(100)', avg_rewards, step=n)
-                tf.summary.scalar('average loss)', losses, step=n)
-            # if n % 100 == 0:
-        #         print("episode:", n, "episode reward:", total_reward, "eps:", epsilon, "avg reward (last 100):", avg_rewards,
-        #               "episode loss: ", losses)
-        # print("avg reward for last 100 episodes:", avg_rewards)
-
-    test(TrainNet, epsilon)
+    # test(TrainNet, epsilon)
 
 
 if __name__ == '__main__':

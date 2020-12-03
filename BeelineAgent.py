@@ -93,16 +93,17 @@ class Agent:
         for loc in self.breezelocations:
             np_breezelocs[int(loc.split(',')[0]), int(loc.split(',')[1])] = 1
 
-        for loc in self.stenchlocations:
-            np_stenchlocs[int(loc.split(',')[0]), int(loc.split(',')[1])] = 1
+        if not self.heardscream:
+            for loc in self.stenchlocations:
+                np_stenchlocs[int(loc.split(',')[0]), int(loc.split(',')[1])] = 1
 
         for loc in self.visitedlocations:
             np_visitedlocs[int(loc.split(',')[0]), int(loc.split(',')[1])] = 1
 
-        np_breezelocs = np_breezelocs + np.random.rand(np_breezelocs.shape[0], np_breezelocs.shape[1]) / 10
-        np_stenchlocs = np_stenchlocs + np.random.rand(np_stenchlocs.shape[0], np_stenchlocs.shape[1]) / 10
-        np_visitedlocs = np_visitedlocs + np.random.rand(np_visitedlocs.shape[0], np_visitedlocs.shape[1]) / 10
-        np_agentlocs = np_agentlocs + np.random.rand(np_agentlocs.shape[0], np_agentlocs.shape[1]) / 10
+        np_breezelocs = np_breezelocs + np.random.rand(np_breezelocs.shape[0], np_breezelocs.shape[1]) / 1000
+        np_stenchlocs = np_stenchlocs + np.random.rand(np_stenchlocs.shape[0], np_stenchlocs.shape[1]) / 1000
+        np_visitedlocs = np_visitedlocs + np.random.rand(np_visitedlocs.shape[0], np_visitedlocs.shape[1]) / 1000
+        np_agentlocs = np_agentlocs + np.random.rand(np_agentlocs.shape[0], np_agentlocs.shape[1]) / 1000
 
         orient = enc_orientation[percept['direction'].value]
         heardscream = enc_heardscream[self.heardscream]
@@ -110,7 +111,8 @@ class Agent:
         hasgold = enc_hasgold[self.hasgold]
         hasarrow = enc_hasarrow[self.hasarrow]
 
-        state_p1 = np.stack([np_agentlocs, np_stenchlocs, np_stenchlocs, np_visitedlocs]).flatten()
+
+        state_p1 = np.stack([np_agentlocs, np_stenchlocs, np_breezelocs, np_visitedlocs]).flatten()
         state_p2 = np.append(orient, np.array([heardscream, glitter, hasgold, hasarrow]))
         state = np.append(state_p1, state_p2)
 
@@ -123,7 +125,7 @@ class Agent:
         # if next_action == 4: return Action.SHOOT
         # if next_action == 5: return Action.CLIMB
 
-        return np.array([state])
+        return np.array(state)
 
     def gameOver(self, agent_is_alive):
         """ BeeLineAgent_GameOver: called at the end of each try """
