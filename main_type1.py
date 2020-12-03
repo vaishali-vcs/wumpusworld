@@ -289,7 +289,9 @@ def playgame():
                 print("episode:", n, "episode reward:", total_reward, "eps:", epsilon, "avg reward (last 100):", avg_rewards,
                       "episode loss: ", losses)
                 print("avg reward for last 100 episodes:", avg_rewards)
-
+        if gameswon == 1:
+            env = WumpusWorldEnv()
+            env.render()
     print("gameswon=", sumgameswon)
 
     # test(TrainNet, epsilon)
