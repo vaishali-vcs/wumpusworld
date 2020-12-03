@@ -204,8 +204,8 @@ def play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step):
     if int(reward) > 0:
         gameswon += 1
 
-    print("steps=", steps)
-    return rewards, mean(losses), gameswon
+    # print("steps=", steps)
+    return rewards, mean(losses), gameswon, steps
 
 
 def test_model(model, epsilon):
@@ -275,7 +275,7 @@ def playgame():
     sumgameswon = 0
     for n in tqdm(range(N)):
         epsilon = max(min_epsilon, epsilon * decay)
-        total_reward, losses, gameswon = play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step)
+        total_reward, losses, gameswon, stepstaken = play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step)
         sumgameswon+= gameswon
         total_rewards[n] = total_reward
         avg_rewards = total_rewards[max(0, n - 100):(n + 1)].mean()
@@ -283,6 +283,8 @@ def playgame():
             tf.summary.scalar('episode reward', total_reward, step=n)
             tf.summary.scalar('running avg reward(100)', avg_rewards, step=n)
             tf.summary.scalar('average loss)', losses, step=n)
+            tf.summary.scalar('stepstaken)',stepstaken, step=n)
+            tf.summary.scalar('gameswon)', gameswon, step=n)
         if n % 100 == 0:
                 print("episode:", n, "episode reward:", total_reward, "eps:", epsilon, "avg reward (last 100):", avg_rewards,
                       "episode loss: ", losses)
