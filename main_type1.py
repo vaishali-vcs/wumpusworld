@@ -12,6 +12,7 @@ import tensorflow as tf
 import datetime
 from statistics import mean
 from tqdm import tqdm
+
 # use tf2
 # https://github.com/VXU1230/Medium-Tutorials/blob/master/dqn/cart_pole.py
 # https://towardsdatascience.com/deep-reinforcement-learning-build-a-deep-q-network-dqn-to-play-cartpole-with-tensorflow-2-and-gym-8e105744b998
@@ -21,7 +22,7 @@ sys.path.append(os.getcwd())
 from wumpusworld.envs.WumpusGym import WumpusWorldEnv
 from BeelineAgent import Agent, Action
 
-WORLD_SIZE= 4
+WORLD_SIZE = 4
 
 
 class MyModel(tf.keras.Model):
@@ -108,6 +109,7 @@ class DQN:
 
         return loss
 
+
 l1 = 72
 l2 = 150
 l3 = 100
@@ -133,6 +135,7 @@ def action_to_string(action):
     if action == Action.CLIMB:
         return "CLIMB"
     return "UNKNOWN ACTION"
+
 
 #
 # def buildnetwork():
@@ -178,7 +181,7 @@ def play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step):
         # print(state[48:64])
         # print(state[64:])
         action = TrainNet.get_action(state, epsilon)
-        steps+=1
+        steps += 1
         # print(action_to_string(action))
         prev_observations = state
         observations, reward, done = env.step(action)
@@ -187,7 +190,7 @@ def play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step):
 
         rewards += int(reward)
         if done:
-           env.reset()
+            env.reset()
 
         exp = {'s': prev_observations, 'a': action, 'r': int(reward), 's2': state2, 'done': done}
         TrainNet.add_experience(exp)
@@ -212,7 +215,7 @@ def test_model(model, epsilon):
     i = 0
     test_game = WumpusWorldEnv()
     agent = Agent()
-    observations =test_game.reset()
+    observations = test_game.reset()
 
     status = 1
     while status == 1:  # A
@@ -250,8 +253,8 @@ def test(tnet, epsilon):
 
 def playgame():
     env = WumpusWorldEnv()
-    env.render()
-    agent = Agent()
+    # env.render()
+    # agent = Agent()
     gamma = 0.99
     copy_step = 25
     num_states = l1
@@ -262,40 +265,61 @@ def playgame():
     batch_size = 32
     lr = 1e-2
     current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    log_dir = 'logs/dqn/' + current_time
-    summary_writer = tf.summary.create_file_writer(log_dir)
 
     TrainNet = DQN(num_states, num_actions, hidden_units, gamma, max_experiences, min_experiences, batch_size, lr)
     TargetNet = DQN(num_states, num_actions, hidden_units, gamma, max_experiences, min_experiences, batch_size, lr)
     N = 5000
+    n_envs = 500
     total_rewards = np.empty(N)
     epsilon = 0.99
     decay = 0.9999
     min_epsilon = 0.1
     sumgameswon = 0
-    for n in tqdm(range(N)):
-        epsilon = max(min_epsilon, epsilon * decay)
-        total_reward, losses, gameswon, stepstaken = play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step)
-        sumgameswon+= gameswon
-        total_rewards[n] = total_reward
-        avg_rewards = total_rewards[max(0, n - 100):(n + 1)].mean()
-        with summary_writer.as_default():
-            tf.summary.scalar('episode reward', total_reward, step=n)
-            tf.summary.scalar('running avg reward(100)', avg_rewards, step=n)
-            tf.summary.scalar('average loss)', losses, step=n)
-            tf.summary.scalar('stepstaken)',stepstaken, step=n)
-            tf.summary.scalar('gameswon)', gameswon, step=n)
-        if n % 100 == 0:
-                print("episode:", n, "episode reward:", total_reward, "eps:", epsilon, "avg reward (last 100):", avg_rewards,
+    firstwin = {}
+
+    for i in range(n_envs):
+        log_dir = 'logs/dqn/' + str(i) + '/' + current_time
+        summary_writer = tf.summary.create_file_writer(log_dir)
+        firstwin[i] = 0
+        print("running on env = ", i)
+
+        for n in tqdm(range(N)):
+            agent = Agent()
+            epsilon = max(min_epsilon, epsilon * decay)
+            total_reward, losses, gameswon, stepstaken = play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step)
+            sumgameswon += gameswon
+            total_rewards[n] = total_reward
+            avg_rewards = total_rewards[max(0, n - 100):(n + 1)].mean()
+            with summary_writer.as_default():
+                tf.summary.scalar('episode reward', total_reward, step=n)
+                tf.summary.scalar('running avg reward(100)', avg_rewards, step=n)
+                tf.summary.scalar('average loss)', losses, step=n)
+                tf.summary.scalar('stepstaken)', stepstaken, step=n)
+                tf.summary.scalar('gameswon)', gameswon, step=n)
+            if n % 100 == 0:
+                print("episode:", n, "episode reward:", total_reward, "eps:", epsilon, "avg reward (last 100):",
+                      avg_rewards,
                       "episode loss: ", losses)
                 print("avg reward for last 100 episodes:", avg_rewards)
-        if gameswon == 1:
-            env = WumpusWorldEnv()
+
+            if gameswon == 1:
+                env = WumpusWorldEnv()
+                firstwin[i] = n
+                # env.render()
+                print("game won. Run 500 episodes on new env")
+                break
+        if gameswon == 0:
+            print("env couldnt win")
             env.render()
+            env = WumpusWorldEnv()
+
     print("gameswon=", sumgameswon)
+    print(firstwin)
+
+
 
     # test(TrainNet, epsilon)
 
 
 if __name__ == '__main__':
-   playgame()
+    playgame()
