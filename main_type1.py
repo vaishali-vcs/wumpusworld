@@ -12,6 +12,7 @@ import tensorflow as tf
 import datetime
 from statistics import mean
 from tqdm import tqdm
+import pandas as pd
 
 # use tf2
 # https://github.com/VXU1230/Medium-Tutorials/blob/master/dqn/cart_pole.py
@@ -211,44 +212,26 @@ def play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step):
     return rewards, mean(losses), gameswon, steps
 
 
-def test_model(model, epsilon):
-    i = 0
-    test_game = WumpusWorldEnv()
+def test_model(model, mode, epsilon):
+
+    test_game = WumpusWorldEnv(mode=mode)
+    print("easy env:")
+    test_game.render()
     agent = Agent()
     observations = test_game.reset()
 
-    status = 1
-    while status == 1:  # A
+    done = False
+    while not done:
         state = agent.processPercepts(WORLD_SIZE, observations)
         action = model.get_action(state, epsilon)
 
         observations, reward, done = test_game.step(action)
 
-        reward = int(reward)
-
-        if reward != -1:
-            if reward > 0:
-                status = 2
-            else:
-                status = 0
-        i += 1
-        if i > 15:
-            break
-
-    win = True if status == 2 else False
-    return win
+    if int(reward) > 0:
+        print("won " + mode + " game")
+    else: print("lost " + mode + " game")
 
 
-def test(tnet, epsilon):
-    max_games = 1000
-    wins = 0
-    for i in range(max_games):
-        win = test_model(tnet, epsilon)
-        if win:
-            wins += 1
-    win_perc = float(wins) / float(max_games)
-    print("Games played: {0}, # of wins: {1}".format(max_games, wins))
-    print("Win percentage: {}%".format(100.0 * win_perc))
 
 
 def playgame():
@@ -256,6 +239,7 @@ def playgame():
     # env.render()
     # agent = Agent()
     gamma = 0.99
+    epsilon = 0.99
     copy_step = 25
     num_states = l1
     num_actions = len(env.action_space)
@@ -268,39 +252,41 @@ def playgame():
 
     TrainNet = DQN(num_states, num_actions, hidden_units, gamma, max_experiences, min_experiences, batch_size, lr)
     TargetNet = DQN(num_states, num_actions, hidden_units, gamma, max_experiences, min_experiences, batch_size, lr)
-    N = 5000
-    n_envs = 500
+
+    N = 1000
+    n_envs = 100
     total_rewards = np.empty(N)
-    epsilon = 0.99
+
     decay = 0.9999
     min_epsilon = 0.1
     sumgameswon = 0
     firstwin = {}
+    steps_pdframe = pd.DataFrame()
+    rewards_pdframe = pd.DataFrame()
 
     for i in range(n_envs):
         log_dir = 'logs/dqn/' + str(i) + '/' + current_time
         summary_writer = tf.summary.create_file_writer(log_dir)
         firstwin[i] = 0
         print("running on env = ", i)
-
+        row_stepstaken = {x:"-" for x in range(1, N+1)}
+        row_rewards = {x:"-" for x in range(1, N+1)}
         for n in tqdm(range(N)):
             agent = Agent()
             epsilon = max(min_epsilon, epsilon * decay)
             total_reward, losses, gameswon, stepstaken = play_game(agent, env, TrainNet, TargetNet, epsilon, copy_step)
             sumgameswon += gameswon
-            total_rewards[n] = total_reward
-            avg_rewards = total_rewards[max(0, n - 100):(n + 1)].mean()
+            row_rewards[n+1] = total_reward
+            row_stepstaken[n+1] = int(stepstaken)
             with summary_writer.as_default():
-                tf.summary.scalar('episode reward', total_reward, step=n)
-                tf.summary.scalar('running avg reward(100)', avg_rewards, step=n)
-                tf.summary.scalar('average loss)', losses, step=n)
                 tf.summary.scalar('stepstaken)', stepstaken, step=n)
                 tf.summary.scalar('gameswon)', gameswon, step=n)
-            if n % 100 == 0:
-                print("episode:", n, "episode reward:", total_reward, "eps:", epsilon, "avg reward (last 100):",
-                      avg_rewards,
-                      "episode loss: ", losses)
-                print("avg reward for last 100 episodes:", avg_rewards)
+
+            # if n % 100 == 0:
+            #     print("episode:", n, "episode reward:", total_reward, "eps:", epsilon, "avg reward (last 100):",
+            #           avg_rewards,
+            #           "episode loss: ", losses)
+            #     print("avg reward for last 100 episodes:", avg_rewards)
 
             if gameswon == 1:
                 env = WumpusWorldEnv()
@@ -308,6 +294,9 @@ def playgame():
                 # env.render()
                 print("game won. Run 500 episodes on new env")
                 break
+        steps_pdframe = steps_pdframe.append(row_stepstaken, ignore_index=True)
+        rewards_pdframe = rewards_pdframe.append(row_rewards, ignore_index=True)
+
         if gameswon == 0:
             print("env couldnt win")
             env.render()
@@ -316,10 +305,11 @@ def playgame():
     print("gameswon=", sumgameswon)
     print(firstwin)
 
-
-
-    # test(TrainNet, epsilon)
+    return TrainNet, TargetNet, steps_pdframe, rewards_pdframe
 
 
 if __name__ == '__main__':
-    playgame()
+    trainmodel, targetmodel, dfsteps, dfrewards  = playgame()
+    print("Test the trained model.......")
+    test_model(trainmodel, mode='easy',epsilon=0.99)
+    test_model(trainmodel, mode='difficult', epsilon=0.99)

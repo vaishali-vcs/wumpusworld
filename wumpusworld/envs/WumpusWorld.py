@@ -5,11 +5,11 @@ from wumpusworld.envs.WorldState import *
 
 class Wumpus_World:
 
-    def __init__(self, size):
+    def __init__(self, size, mode='random'):
         self.score = 0
         self.old_score = 0
         self.random_prob = 0.2
-        self.state = World_State()
+        self.state = World_State(mode)
         self.percept = Perception()
         self.update_perception()
 

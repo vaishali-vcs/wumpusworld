@@ -48,15 +48,25 @@ class Action:
 
 class World_State:
 
-    def __init__(self):
+    def __init__(self, mode='random'):
         self.world_size = 4
         self.pit_prob = 0.2
         # x , y 
         self.agent_location = Location(0, 0)
         self.agent_direction = Direction.EAST
-        self.wumpus_location = self.init_wumpus_location()
-        self.pit_locations = self.init_pit_locations()
-        self.gold_location = self.init_gold_location()
+
+        if mode == 'random':
+            self.wumpus_location = self.init_wumpus_location()
+            self.pit_locations = self.init_pit_locations()
+            self.gold_location = self.init_gold_location()
+        elif mode == 'easy':
+            self.wumpus_location = Location(0, 2)
+            self.gold_location =   Location(3, 1)
+            self.pit_locations = [Location(0, 3)]
+        elif mode == 'difficult':
+            self.wumpus_location = Location(3, 3)
+            self.gold_location = Location(2, 3)
+            self.pit_locations = [Location(0, 2), Location(1, 2), Location(2, 1), Location(3, 1)]
         self.agent_alive = True
         self.has_arrow = True
         self.has_gold = False

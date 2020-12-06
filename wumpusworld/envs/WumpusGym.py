@@ -5,8 +5,8 @@ from wumpusworld.envs.WorldState import World_State, Action
 class WumpusWorldEnv():
     metadata = {'render.modes' : ['human']}
 
-    def __init__(self, size=4):
-        self._world = Wumpus_World(size)
+    def __init__(self, size=4, mode = 'random'):
+        self._world = Wumpus_World(size, mode)
         self.action_space = [0,1,2,3,4,5]
 
     def getpercept(self):
